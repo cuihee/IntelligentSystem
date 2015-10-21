@@ -4,7 +4,7 @@ __author__ = 'cuihe'
 import math
 
 def WriteFile(File, DisX=9, startX=0.0, endX=2*math.pi, OpenStlye='w'):
-    PerX = (endX-startX)/DisX
+    PerX = (endX-startX)/(DisX-1)
     f = open(File,OpenStlye)
     for i in range(DisX):
         temp = i*PerX
@@ -12,7 +12,7 @@ def WriteFile(File, DisX=9, startX=0.0, endX=2*math.pi, OpenStlye='w'):
     f.close()
 
 def MakeFx_1sinx1():
-    FileName = 'TestFile_1Sinx1.txt'
+    FileName = '1sinx1_InputData.txt'
     WriteFile(FileName, 9, 0.0, 2*math.pi, 'w')
     WriteFile(FileName, 361, 0.0, 2*math.pi, 'a')
 

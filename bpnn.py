@@ -1,191 +1,250 @@
-#__author__ = 'cuihe'
 # coding:utf-8
-
 import math
 import random
-import string
 
 
-random.seed(0)
+class BpnnNode:
+    '''
+    ��Ԫ�ڵ�
+    '''
+    def __init__(self, input_num):
+        '''
+        :param input_num:��������
+        :return:None
+        '''
+        self.input = [1.0] * (input_num + 1)
+        self.weight = [0.0] * (input_num + 1)
+        self.old_weight = [0.0] * (input_num + 1)
+        for i in range(0, len(self.weight)):
+            self.weight[i] = self.rand(-0.5, 0.5)
+        self.delta = 0.0
+        self.output = 0.0
 
-# calculate a random number where:  a <= rand < b
-def rand(a, b):
-    return (b-a)*random.random() + a
+    def rand(self,a, b):
+        '''
+        :param a:�½�
+        :param b:�Ͻ�
+        :return:���ֵ
+        '''
+        return (b-a)*random.random() + a
 
-# Make a matrix I*J filled by fill, default=0.0
-def makeMatrix(I, J, fill=0.0):
-    m = []
-    for i in range(I):
-        m.append([fill]*J)
-    return m
+    def sigmoid(self, x):
+        '''
+        ��ֵ����
+        '''
+        return 1.0 / (1.0 + math.e ** -x)
+        # return math.tanh(x)
 
-# sigmoid function, tanh is a little nicer than the standard 1/(1+e^-x)
-def S_fy(x):
-    return math.tanh(x)
+    def dsigmoid(self, y):
+        '''
+        ��ֵ������
+        '''
+        return y * (1.0 - y)
+        # return 1.0 - y**2
 
-# derivative of our sigmoid function, in terms of the output (i.e. y)
-def dsigmoid(y):
-    return 1.0 - y**2
+    def compute(self, data):
+        '''
+        �������ֵ
+        :param data:�������
+        :return:None
+        '''
+        if len(data) != len(self.input) - 1:
+            raise ValueError('wrong length of input for node!')
+        for i in range(len(self.input) - 1):
+            self.input[i] = data[i]
+        net = 0.0
+        for i in range(len(self.input)):
+            net += self.input[i] * self.weight[i]
+        self.output = self.sigmoid(net)
 
-class NN:
-    def __init__(self, ni, nh, no):
-        # number of input, hidden, and output nodes
-        self.ni = ni + 1 # +1 for bias node
-        self.nh = nh
-        self.no = no
+    def update(self, weight_list, delta_list, eta, momentum):
+        '''
 
-        # activations for nodes
-        self.ai = [1.0]*self.ni
-        self.ah = [1.0]*self.nh
-        self.ao = [1.0]*self.no
-
-        # create weights
-        self.wi = makeMatrix(self.ni, self.nh) #神经网络第一层 第二层的连接权值
-        self.wo = makeMatrix(self.nh, self.no) #神经网络第二层 第三层的连接权值
-        for i in range(self.ni):
-            for j in range(self.nh):
-                self.wi[i][j] = rand(-2.0, 2.0)
-        for j in range(self.nh):
-            for k in range(self.no):
-                self.wo[j][k] = rand(-1.0, 1.0)
-
-        # last change in weights for momentum
-        self.ci = makeMatrix(self.ni, self.nh)
-        self.co = makeMatrix(self.nh, self.no)
-
-    def update(self, inputs):
-        #按照已有的权值运算一遍，并非更新
-        if len(inputs) != self.ni-1:
-            raise ValueError('wrong number of inputs')
-
-        # input activations
-        for i in range(self.ni-1):
-            #self.ai[i] = S_fy(inputs[i])
-            self.ai[i] = inputs[i]
-
-        # hidden activations
-        for j in range(self.nh): #对隐含层的每一个神经元
-            sum = 0.0 #这个神经元初始化为0
-            for i in range(self.ni): #接受前一层所有的神经元信息
-                sum = sum + self.ai[i] * self.wi[i][j]
-            self.ah[j] = S_fy(sum) #S化后存入
-
-        # output activations
-        for k in range(self.no):
-            sum = 0.0
-            for j in range(self.nh):
-                sum = sum + self.ah[j] * self.wo[j][k]
-            self.ao[k] = S_fy(sum)
-
-        return self.ao[:]
+        :param weight_list:
+        :param delta_list:
+        :param eta:
+        :param momentum:
+        :return:
+        '''
+        self.delta = 0.0
+        for i in range(len(weight_list)):
+            self.delta += weight_list[i] * delta_list[i]
+        self.delta *= self.dsigmoid(self.output)
+        for i in range(len(self.weight)):
+            change = eta * self.delta * self.input[i]+momentum*(self.weight[i]-self.old_weight[i])
+            # change= eta * self.delta * self.input[i]
+            self.old_weight[i]=self.weight[i]
+            self.weight[i] += change
 
 
-    def backPropagate(self, targets, N, M):
-        if len(targets) != self.no:
-            raise ValueError('wrong number of target values')
+class Bpnn:
+    def __init__(self, input_num, node_num_list):
+        '''
 
-        # calculate error terms for output
-        output_deltas = [0.0] * self.no
-        for k in range(self.no): #每一个输出
-            error = targets[k]-self.ao[k]
-            output_deltas[k] = dsigmoid(self.ao[k]) * error
+        :param input_num:
+        :param node_num_list:
+        :return:
+        '''
+        self.bpnn = []
+        self.input_num = input_num
+        tmp_input_num = input_num
+        for node_num in node_num_list:
+            self.bpnn.append([BpnnNode(tmp_input_num) for i in range(node_num)])
+            tmp_input_num = node_num
 
-        # calculate error terms for hidden
-        hidden_deltas = [0.0] * self.nh
-        for j in range(self.nh):
-            error = 0.0
-            for k in range(self.no):
-                error = error + output_deltas[k]*self.wo[j][k]
-            hidden_deltas[j] = dsigmoid(self.ah[j]) * error
+    def compute(self, input):
+        '''
 
-        # update output weights
-        for j in range(self.nh):
-            for k in range(self.no):
-                change = output_deltas[k]*self.ah[j]
-                self.wo[j][k] = self.wo[j][k] + N*change + M*self.co[j][k]
-                self.co[j][k] = change
-                #print N*change, M*self.co[j][k]
+        :param input:
+        :return:
+        '''
+        if len(input) != self.input_num:
+            raise ValueError('wrong length of input for bpnn!')
+        tmp_input = input
+        for node_list in self.bpnn:
+            for node in node_list:
+                node.compute(tmp_input)
+            tmp_input = [node.output for node in node_list]
 
-        # update input weights
-        for i in range(self.ni):
-            for j in range(self.nh):
-                change = hidden_deltas[j]*self.ai[i]
-                self.wi[i][j] = self.wi[i][j] + N*change + M*self.ci[i][j]
-                self.ci[i][j] = change
+    def output(self):
+        '''
 
-        # calculate error
-        error = 0.0
-        for k in range(len(targets)):
-            error = error + 0.5*(targets[k]-self.ao[k])**2
+        :return:
+        '''
+        return [node.output for node in self.bpnn[-1]]
+
+    def error(self, example_list):
+        '''
+
+        :param example_list:
+        :return:
+        '''
+        error = []
+        for example in example_list:
+            self.compute(example[0])
+            output = self.output()
+            target = example[1]
+            e = 0.
+            for i in range(len(output)):
+                e += (target[i] - output[i]) ** 2
+            error.append(e / 2.)
         return error
 
+    def update(self, target, eta, momentum):
+        '''
 
-    def test(self, patterns):
-        for p in patterns:
-            print(p[0], "->", self.update(p[0])) #update的参数是inputs
+        :param target:
+        :param eta:
+        :param momentum:
+        :return:
+        '''
+        if len(target) != len(self.bpnn[-1]):
+            raise ValueError('wrong length of target for bpnn!')
+        for i in range(len(self.bpnn[-1])):
+            self.bpnn[-1][i].update([1.0], [target[i] - self.bpnn[-1][i].output], eta, momentum)
+        tmp_list = range(len(self.bpnn) - 1)
+        tmp_list.reverse()
+        for i in tmp_list:
+            delta_list = [node.delta for node in self.bpnn[i + 1]]
+            for j in range(len(self.bpnn[i])):
+                weight_list = [node.old_weight[j] for node in self.bpnn[i + 1]]
+                self.bpnn[i][j].update(weight_list, delta_list, eta, momentum)
 
-    def weights(self):
-        print('Input weights: '),
-        for i in range(self.ni):
-            print(self.wi[i] ),
-        print
-        print('Output weights: '),
-        for j in range(self.nh):
-            print(self.wo[j] ),
-        print
+    def train(self, example_list, error, eta=0.3, momentum=0.2):
+        '''
 
-    def train(self, patterns, iterations=20000, N=0.006, M=0.006):
-        # N: learning rate
-        # M: momentum factor
-        # change = hidden_deltas[j]*self.ai[i]
-        # self.wi[i][j] = self.wi[i][j] + N*change + M*self.ci[i][j]
-        # self.ci[i][j] = change
-        for i in range(iterations): #训练次数
+        :param example_list:
+        :param error:
+        :param eta:
+        :param momentum:
+        :return:
+        '''
+        error_now=sum(self.error(example_list))
+        self.n = 0
+        while  error_now> error:
+            self.n += 1
+            if self.n % 50 ==0:
+                print(' error_now = %f  train_times_now = %d ' % (error_now, self.n))
+            # print '\n----------\n'
+            for example in example_list:
+                self.compute(example[0])
+                # print self.output()
+                self.update(example[1], eta, momentum)
+            error_now=sum(self.error(example_list))
+            # print error_now
+        print('error_n: %d' % self.n)
+
+    def debug_input(self):
+        '''
+
+        :return:
+        '''
+        print 'debug input'
+        for i in range(len(self.bpnn)):
+            print '\t', 'layer ', i # \t Tab
+            for node in self.bpnn[i]:
+                print '\t\t', node.input
+
+    def debug_output(self):
+        '''
+
+        :return:
+        '''
+        print 'debug output'
+        for i in range(len(self.bpnn)):
+            # print '\t', 'layer ', i
+            print '\t\t', [node.output for node in self.bpnn[i]]
+
+    def debug_delta(self):
+        '''
+
+        :return:
+        '''
+        print 'debug delta'
+        for i in range(len(self.bpnn)):
+            print '\t', 'layer ', i
+            for node in self.bpnn[i]:
+                print '\t\t', node.delta
+
+    def debug_weight(self):
+        '''
+
+        :return:
+        '''
+        print 'debug weight'
+        for i in range(len(self.bpnn)):
+            print '\t', 'layer ', i
+            for node in self.bpnn[i]:
+                print '\t\t', node.weight
+
+    def debug_train(self, example_list, times, eta=0.4, momentum=0.3):
+        '''
+
+        :param example_list:
+        :param times:
+        :param eta:
+        :param momentum:
+        :return:
+        '''
+        for i in range(times): #训练次数
             error = 0.0 #本次误差
-            for p in patterns: #数据中每行
-                inputs = p[0] #每行的第一个数据是一个输入数组
-                targets = p[1] #每行的后一个数据是期望输出
-                self.update(inputs) #return self.ao[:]
-                error = error + self.backPropagate(targets, N, M) #这次训练的累加误差
-            if i % 100 == 0: #每100次训练打印一次误差
-                print('error %-.6f' % error),
-                if i % 1000 == 0:
-                    print('\n')
-        print('\n')
+            for example in example_list: #数据中每行
+                self.compute(example[0])
+                self.update(example[1], eta, momentum)
+            if i % 80 == 0:
+                print('    [%3.2f %%] ' % ((i*1.0/times)*100))
 
 
-def demo():
-    TestList2 = []
-    TestFileList = ['TestFile_Sinx.txt', 'TestFile_1Sinx1.txt', 'TestFile_x1x2.txt']
-    TestFileXL = [9, 9, 11]
-    FileNum = 0
-    TestFile = TestFileList[FileNum]  #确保数据在这个文件
-    f = open(TestFile,'r')
-    for line in f: #对于每一行
-        TestList = [float(x) for x in line.split()] #读取这行的每一个实数，形成一行数据
-        TestList2.append([TestList]) #形成2维数组
-
-    traindata = []
-    for i in range(len(TestList2)):
-        #TestList2[i][0].append([TestList2[i][0][len(TestList2[i][0])]])
-        #TestList2[i] = [TestList2[i][0:len(TestList2)-1]]
-        #TestList2[i].insert(1,TestList2[i][len(TestList2[i][0])])
-        tempLa = TestList2[i]
-        tempLb = tempLa[0]
-        tempLc = tempLb[len(tempLb)-1]
-        tempLb = [tempLb[:len(tempLb)-1]]
-        tempLb.append([tempLc])
-        traindata.append(tempLb)
-
-    #traindata = TestList2[:]
-
-    datalen = len(traindata[0][0]) #输入层的数量
-
-    n = NN(datalen, datalen+1, 1)
-
-    n.train(traindata[0:TestFileXL[FileNum]]) #def train(self, patterns, iterations=500, N=0.02, M=0.01):
-    n.test(traindata[TestFileXL[FileNum]:])
-
-
-if __name__ == '__main__':
-    demo()
+# example_list = [
+#     [[0, 0, 0],[0]],
+#     [[0, 1, 0],[0]],
+#     [[1, 0, 0],[0]],
+#     [[0, 1, 1],[1]],
+#     [[1, 0, 1],[1]],
+#     [[1, 1, 0],[0]]
+# ]
+# bpnn = Bpnn(3, [4 ,4,1])
+# bpnn.train(example_list, 0.001)
+# bpnn.debug_train(example_list,10000)
+# bpnn.compute([0.9,0.9])
+# print bpnn.output()
